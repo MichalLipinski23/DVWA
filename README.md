@@ -771,5 +771,5 @@ The app has vulnerabilities, it is deliberate. Most are the well documented ones
 ## Links
 
 Project Home: <https://github.com/digininja/DVWA>
-
+ 
 _Created by the DVWA team_
