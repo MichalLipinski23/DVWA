@@ -1,0 +1,82 @@
+name: Security Pipeline
+
+on:
+  push:
+    branches: [ "master", "main" ]
+  pull_request:
+    branches: [ "master", "main" ]
+  workflow_dispatch:
+
+jobs:
+  docker-lint:
+    name: Lint - Hadolint Dockerfile
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Pobranie kodu
+        uses: actions/checkout@v4
+
+      - name: Sprawdzenie Dockerfile przez Hadolint
+        uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: Dockerfile
+          failure-threshold: error
+
+  semgrep-sast:
+    name: SAST - Semgrep
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Pobranie kodu
+        uses: actions/checkout@v4
+
+      - name: Uruchomienie Semgrep
+        uses: semgrep/semgrep-action@v1
+        with:
+          config: auto
+        continue-on-error: true
+
+  build:
+    name: Build - Docker image
+    runs-on: ubuntu-latest
+    needs:
+      - docker-lint
+      - semgrep-sast
+
+    steps:
+      - name: Pobranie kodu
+        uses: actions/checkout@v4
+
+      - name: Budowanie obrazu Docker
+        run: docker build -t securityaudit:${{ github.run_id }} .
+
+      - name: Zapisanie obrazu Docker do pliku
+        run: docker save securityaudit:${{ github.run_id }} -o securityaudit.tar
+
+      - name: Przekazanie obrazu do kolejnego etapu
+        uses: actions/upload-artifact@v4
+        with:
+          name: securityaudit-image
+          path: securityaudit.tar
+
+  container-scanning:
+    name: Container Scan - Trivy
+    runs-on: ubuntu-latest
+    needs: build
+
+    steps:
+      - name: Pobranie obrazu Docker
+        uses: actions/download-artifact@v4
+        with:
+          name: securityaudit-image
+
+      - name: Załadowanie obrazu Docker
+        run: docker load -i securityaudit.tar
+
+      - name: Skanowanie obrazu Trivy
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: securityaudit:${{ github.run_id }}
+          format: table
+          exit-code: 0
+          severity: HIGH,CRITICAL
